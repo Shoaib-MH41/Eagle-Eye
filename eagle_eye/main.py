@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from eagle_eye.camera.camera2_api import Camera2Controller
 from eagle_eye.camera.burst import capture_aligned_burst
-from eagle_eye.processing.filters import AIProcessor, example_denoise_filter, example_demosaic_filter, example_color_correction_filter
+from eagle_eye.processing.filters import AIProcessor, demosaic_pipeline
 from eagle_eye.processing.fusion import mertens_exposure_fusion
 
 def main():
@@ -38,9 +38,7 @@ def main():
     processor = AIProcessor()
 
     # Add filters in desired order
-    processor.add_filter(example_denoise_filter)
-    processor.add_filter(example_demosaic_filter)
-    processor.add_filter(example_color_correction_filter)
+    processor.add_filter(demosaic_pipeline)
 
     # 8. HDR Fusion and Processing
     print("\nFusing aligned frames...")
