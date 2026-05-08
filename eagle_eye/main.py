@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from eagle_eye.camera.camera2_api import Camera2Controller
 from eagle_eye.camera.burst import capture_aligned_burst
 from eagle_eye.processing.filters import AIProcessor, example_denoise_filter, example_demosaic_filter, example_color_correction_filter
+from eagle_eye.processing.fusion import mertens_exposure_fusion
 
 def main():
     print("Initializing Eagle Eye Camera System...")
@@ -41,9 +42,10 @@ def main():
     processor.add_filter(example_demosaic_filter)
     processor.add_filter(example_color_correction_filter)
 
-    # 8. Process Image (using the reference frame for example)
-    reference_frame = aligned_frames[2] if len(aligned_frames) > 2 else aligned_frames[0]
-    final_image = processor.process(reference_frame)
+    # 8. HDR Fusion and Processing
+    print("\nFusing aligned frames...")
+    fused_frame = mertens_exposure_fusion(aligned_frames)
+    final_image = processor.process(fused_frame)
 
     print("\nProcessing complete!")
     if final_image is not None:
