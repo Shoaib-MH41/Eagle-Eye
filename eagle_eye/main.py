@@ -6,8 +6,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from eagle_eye.camera.camera2_api import Camera2Controller
 from eagle_eye.camera.burst import capture_aligned_burst
-from eagle_eye.processing.filters import AIProcessor, example_denoise_filter, example_demosaic_filter, example_color_correction_filter
+from eagle_eye.processing.filters import AIProcessor, example_denoise_filter, example_demosaic_filter, example_color_correction_filter, example_super_resolution_filter
 from eagle_eye.processing.fusion import mertens_exposure_fusion
+import cv2
+from PIL import Image
+import piexif
 
 def main():
     print("Initializing Eagle Eye Camera System...")
@@ -24,7 +27,9 @@ def main():
 
     # 4. Capture Aligned Burst
     # ISO 400, 1/100s base exposure (10,000,000 ns), infinity focus
-    aligned_frames = capture_aligned_burst(camera, base_iso=400, base_exposure=10000000, focus_distance=0.0)
+    base_iso = 400
+    base_exposure_ns = 10000000
+    aligned_frames = capture_aligned_burst(camera, base_iso=base_iso, base_exposure=base_exposure_ns, focus_distance=0.0)
 
     if aligned_frames and len(aligned_frames) > 0:
         print(f"Successfully captured {len(aligned_frames)} aligned RAW frames.")
@@ -41,6 +46,7 @@ def main():
     processor.add_filter(example_denoise_filter)
     processor.add_filter(example_demosaic_filter)
     processor.add_filter(example_color_correction_filter)
+    processor.add_filter(example_super_resolution_filter)
 
     # 8. HDR Fusion and Processing
     print("\nFusing aligned frames...")
@@ -50,6 +56,33 @@ def main():
     print("\nProcessing complete!")
     if final_image is not None:
         print(f"Final Image Shape: {final_image.shape}, Dtype: {final_image.dtype}")
+
+        # Save as Lossless PNG
+        png_path = "output.png"
+        cv2.imwrite(png_path, cv2.cvtColor(final_image, cv2.COLOR_RGB2BGR))
+        print(f"Saved lossless output to {png_path}")
+
+        # Save as 100% Quality JPEG with EXIF
+        jpg_path = "output.jpg"
+
+        # Create EXIF data
+        exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+
+        # EXIF tags (ISO, Exposure Time)
+        # Exposure time is saved as a rational (numerator, denominator)
+        exposure_sec = base_exposure_ns / 1e9
+        # Approximate rational for 1/100s -> (1, 100)
+        num, den = int(exposure_sec * 1000000), 1000000
+
+        exif_dict["Exif"][piexif.ExifIFD.ISOSpeedRatings] = base_iso
+        exif_dict["Exif"][piexif.ExifIFD.ExposureTime] = (num, den)
+
+        exif_bytes = piexif.dump(exif_dict)
+
+        # Save JPEG using PIL to inject EXIF
+        pil_image = Image.fromarray(final_image)
+        pil_image.save(jpg_path, "JPEG", quality=100, exif=exif_bytes)
+        print(f"Saved JPEG output with EXIF to {jpg_path}")
 
 if __name__ == "__main__":
     main()
