@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 class AIProcessor:
     """
@@ -30,29 +31,58 @@ class AIProcessor:
 
         return processed_image
 
-# --- Example Filters ---
 
-def example_denoise_filter(image: np.ndarray) -> np.ndarray:
+def demosaic_pipeline(image: np.ndarray) -> np.ndarray:
     """
-    Placeholder for an AI denoising filter.
+    Demosaicing processing pipeline:
+    1. Demosaic Bayer to RGB
+    2. White Balance based on the brightest neutral pixel
+    3. Gamma Correction (1/2.2)
+    4. Fast Non-Local Means Denoising
     """
-    print("  -> Running AI Denoise...")
-    # Add AI processing logic here (e.g., using ONNX Runtime, TensorFlow Lite)
-    return image
+    print("  -> Running Demosaic Pipeline...")
 
-def example_demosaic_filter(image: np.ndarray) -> np.ndarray:
-    """
-    Placeholder for demosaicing (RAW to RGB) filter.
-    """
-    print("  -> Running Demosaicing...")
-    # Add demosaicing logic here
-    # For now, just return the raw image or a dummy RGB conversion
-    return image
+    # Ensure input is 2D for Bayer demosaicing
+    if len(image.shape) > 2:
+        image = image.squeeze()
 
-def example_color_correction_filter(image: np.ndarray) -> np.ndarray:
-    """
-    Placeholder for AI color correction/grading.
-    """
-    print("  -> Running AI Color Correction...")
-    # Add color correction logic
-    return image
+    # Demosaic: convert 32-bit float Bayer to 16-bit uint for OpenCV demosaicing
+    bayer_16 = np.clip(image * 65535, 0, 65535).astype(np.uint16)
+    rgb_16 = cv2.cvtColor(bayer_16, cv2.COLOR_BayerBG2RGB)
+
+    # Convert back to 32-bit float for processing
+    rgb_float = rgb_16.astype(np.float32) / 65535.0
+
+    # 1. White Balance based on brightest neutral pixel
+    std_dev = np.std(rgb_float, axis=2)
+    mean_val = np.mean(rgb_float, axis=2)
+
+    # Mask to find neutral pixels (where color channels have low variance)
+    neutral_mask = std_dev < 0.05
+    if not np.any(neutral_mask):
+        neutral_mask = std_dev < 0.1 # Relax threshold if none found
+
+    if np.any(neutral_mask):
+        # Among neutral pixels, find the brightest one
+        brightest_idx = np.argmax(mean_val[neutral_mask])
+        brightest_pixel = rgb_float[neutral_mask][brightest_idx]
+    else:
+        # Fallback to absolute brightest pixel if no neutral pixels found
+        brightest_idx = np.argmax(mean_val)
+        brightest_pixel = rgb_float.reshape(-1, 3)[brightest_idx]
+
+    # Scale all channels based on the brightest pixel to perform White Balance
+    scale_factors = np.max(brightest_pixel) / (brightest_pixel + 1e-6)
+    rgb_wb = np.clip(rgb_float * scale_factors, 0, 1.0)
+
+    # 2. Gamma Correction (1/2.2)
+    rgb_gamma = np.power(rgb_wb, 1.0 / 2.2)
+
+    # 3. Fast Non-Local Means Denoising
+    # Convert to 8-bit for OpenCV denoising
+    rgb_8bit = np.clip(rgb_gamma * 255, 0, 255).astype(np.uint8)
+
+    # Apply fastNlMeansDenoisingColored
+    rgb_denoised = cv2.fastNlMeansDenoisingColored(rgb_8bit, None, 10, 10, 7, 21)
+
+    return rgb_denoised
