@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from eagle_eye.camera.camera2_api import Camera2Controller
+from eagle_eye.camera.burst import capture_aligned_burst
 from eagle_eye.processing.filters import AIProcessor, example_denoise_filter, example_demosaic_filter, example_color_correction_filter
 
 def main():
@@ -20,21 +21,15 @@ def main():
     # Example dimensions: 1920x1080 (Usually sensor dependent)
     camera.setup_image_reader(width=1920, height=1080)
 
-    # 4. Set Manual Controls
-    # ISO 400, 1/100s exposure (10,000,000 ns), infinity focus
-    camera.set_manual_controls(iso=400, exposure_time_ns=10000000, focus_distance=0.0)
+    # 4. Capture Aligned Burst
+    # ISO 400, 1/100s base exposure (10,000,000 ns), infinity focus
+    aligned_frames = capture_aligned_burst(camera, base_iso=400, base_exposure=10000000, focus_distance=0.0)
 
-    # 5. Create Capture Request
-    request = camera.create_capture_request()
-
-    # 6. Capture Image
-    # This will return a NumPy array of the RAW data
-    raw_array = camera.capture_raw_image()
-
-    if raw_array is not None:
-        print(f"Captured RAW Image Shape: {raw_array.shape}, Dtype: {raw_array.dtype}")
+    if aligned_frames and len(aligned_frames) > 0:
+        print(f"Successfully captured {len(aligned_frames)} aligned RAW frames.")
+        print(f"Shape of first frame: {aligned_frames[0].shape}, Dtype: {aligned_frames[0].dtype}")
     else:
-        print("Failed to capture image.")
+        print("Failed to capture burst images.")
         return
 
     # 7. Initialize and Configure Processing Pipeline
@@ -46,8 +41,9 @@ def main():
     processor.add_filter(example_demosaic_filter)
     processor.add_filter(example_color_correction_filter)
 
-    # 8. Process Image
-    final_image = processor.process(raw_array)
+    # 8. Process Image (using the reference frame for example)
+    reference_frame = aligned_frames[2] if len(aligned_frames) > 2 else aligned_frames[0]
+    final_image = processor.process(reference_frame)
 
     print("\nProcessing complete!")
     if final_image is not None:

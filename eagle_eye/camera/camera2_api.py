@@ -176,7 +176,13 @@ class Camera2Controller:
 
         if not JNIUS_AVAILABLE:
             print("Mock: Returning dummy RAW numpy array (1080p, 16-bit)")
-            return np.zeros((1080, 1920), dtype=np.uint16)
+            # Create a simple image with some features so ECC can converge during tests
+            dummy_image = np.zeros((1080, 1920), dtype=np.uint16)
+            # Add a white square in the middle
+            dummy_image[400:600, 800:1100] = 60000
+            # Add some random noise
+            dummy_image += np.random.randint(0, 500, (1080, 1920), dtype=np.uint16)
+            return dummy_image
 
         if not hasattr(self, 'capture_session') or self.capture_session is None:
             print("Capture session not configured yet.")
