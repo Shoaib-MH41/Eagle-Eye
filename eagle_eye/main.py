@@ -6,8 +6,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from eagle_eye.camera.camera2_api import Camera2Controller
 from eagle_eye.camera.burst import capture_aligned_burst
-from eagle_eye.processing.filters import AIProcessor, demosaic_pipeline
+from eagle_eye.processing.filters import AIProcessor, demosaic_pipeline, super_resolution_filter
 from eagle_eye.processing.fusion import mertens_exposure_fusion
+from PIL import Image
 
 def main():
     print("Initializing Eagle Eye Camera System...")
@@ -43,11 +44,43 @@ def main():
     # 8. HDR Fusion and Processing
     print("\nFusing aligned frames...")
     fused_frame = mertens_exposure_fusion(aligned_frames)
-    final_image = processor.process(fused_frame)
+
+    # Run the standard demosaic pipeline on the fused frame
+    processed_image = processor.process(fused_frame)
+
+    # Apply Super-Resolution on the final processed RGB image
+    print("\nApplying Super-Resolution...")
+    final_image = super_resolution_filter(processed_image)
 
     print("\nProcessing complete!")
     if final_image is not None:
         print(f"Final Image Shape: {final_image.shape}, Dtype: {final_image.dtype}")
+
+        print("\nSaving final output...")
+        img_pil = Image.fromarray(final_image)
+
+        # Extract EXIF from original frames if available (mock arrays won't have it)
+        exif_bytes = None
+        if aligned_frames and hasattr(aligned_frames[0], 'info') and 'exif' in aligned_frames[0].info:
+            exif_bytes = aligned_frames[0].info['exif']
+        elif aligned_frames and hasattr(aligned_frames[0], 'getexif'):
+            exif_bytes = aligned_frames[0].getexif().tobytes()
+            if not exif_bytes:
+                exif_bytes = None
+
+        save_kwargs = {}
+        if exif_bytes:
+            save_kwargs['exif'] = exif_bytes
+
+        # Save as Lossless PNG
+        png_path = "output.png"
+        img_pil.save(png_path, "PNG", **save_kwargs)
+        print(f"Saved Lossless PNG to: {png_path}")
+
+        # Save as 100% Quality JPEG
+        jpg_path = "output.jpg"
+        img_pil.save(jpg_path, "JPEG", quality=100, **save_kwargs)
+        print(f"Saved 100% Quality JPEG to: {jpg_path}")
 
 if __name__ == "__main__":
     main()

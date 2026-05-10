@@ -1,5 +1,55 @@
 import numpy as np
 import cv2
+import torch
+import torch.nn as nn
+import os
+
+class ESPCN(nn.Module):
+    """
+    Lightweight Super-Resolution model (ESPCN) using PyTorch.
+    """
+    def __init__(self, scale_factor=2):
+        super(ESPCN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=5, padding=2)
+        self.tanh = nn.Tanh()
+        self.conv2 = nn.Conv2d(64, 32, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(32, 3 * (scale_factor ** 2), kernel_size=3, padding=1)
+        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
+
+    def forward(self, x):
+        x = self.tanh(self.conv1(x))
+        x = self.tanh(self.conv2(x))
+        x = self.pixel_shuffle(self.conv3(x))
+        return x
+
+# Instantiate the model globally to avoid re-initialization overhead per frame/call
+_sr_model = ESPCN(scale_factor=2)
+weights_path = os.path.join(os.path.dirname(__file__), 'espcn_dummy_weights.pth')
+if os.path.exists(weights_path):
+    _sr_model.load_state_dict(torch.load(weights_path))
+else:
+    print(f"Warning: weights file {weights_path} not found.")
+
+_sr_model.eval()
+
+def super_resolution_filter(image: np.ndarray) -> np.ndarray:
+    """
+    Runs the ESPCN model to double the resolution while sharpening details.
+    """
+    print("  -> Running Super-Resolution (ESPCN) Pipeline...")
+
+    # The input image from the demosaic pipeline is an 8-bit RGB image.
+    # Convert it to a float tensor and normalize to [0, 1].
+    img_tensor = torch.from_numpy(image).float().permute(2, 0, 1).unsqueeze(0) / 255.0
+
+    with torch.no_grad():
+        out_tensor = _sr_model(img_tensor)
+
+    # Convert back to a numpy array.
+    out_img = out_tensor.squeeze().permute(1, 2, 0).numpy()
+    out_img = np.clip(out_img * 255, 0, 255).astype(np.uint8)
+
+    return out_img
 
 class AIProcessor:
     """
