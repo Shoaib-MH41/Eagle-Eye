@@ -28,7 +28,8 @@ weights_path = os.path.join(os.path.dirname(__file__), 'espcn_dummy_weights.pth'
 if os.path.exists(weights_path):
     _sr_model.load_state_dict(torch.load(weights_path))
 else:
-    print(f"Warning: weights file {weights_path} not found.")
+    print(f"Warning: weights file {weights_path} not found. Creating dummy weights for packaging.")
+    torch.save(_sr_model.state_dict(), weights_path)
 
 _sr_model.eval()
 
